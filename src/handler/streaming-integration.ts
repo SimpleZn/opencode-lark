@@ -360,8 +360,11 @@ export function buildFinalResponseCard(text: string): Record<string, unknown> {
     config: { wide_screen_mode: true },
     elements: [
       {
-        tag: "markdown",
-        content: text,
+        tag: "div",
+        text: {
+          tag: "lark_md",
+          content: text,
+        },
       },
     ],
   }

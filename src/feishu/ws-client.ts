@@ -99,6 +99,7 @@ export function createFeishuWSGateway(options: WSClientOptions) {
   const wsClient = new Lark.WSClient({
     appId,
     appSecret,
+    domain: process.env.LARK_DOMAIN === "lark" ? Lark.Domain.Lark : Lark.Domain.Feishu,
     loggerLevel: Lark.LoggerLevel.info,
   })
 

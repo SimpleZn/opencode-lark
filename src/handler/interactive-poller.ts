@@ -31,6 +31,8 @@ export interface InteractivePollerDeps {
   /** Shared dedup set — IDs added here are also checked by SSE handlers */
   seenInteractiveIds: ExpiringSet<string>
   interactiveCardRegistry?: InteractiveCardRegistry
+  /** Auto-approve all permissions without sending interactive cards */
+  autoApprove?: boolean
 }
 
 export interface InteractivePoller {
@@ -76,6 +78,7 @@ export function createInteractivePoller(
 ): InteractivePoller {
   const { serverUrl, feishuClient, logger, getChatForSession, seenInteractiveIds } = deps
   let timer: ReturnType<typeof setInterval> | null = null
+  const autoApprove = deps.autoApprove ?? false
 
   async function poll(): Promise<void> {
     try {
@@ -185,6 +188,23 @@ export function createInteractivePoller(
       pendingIds.add(p.id)
       const cardKey = interactiveCardKey("permission", p.id)
       if (seenInteractiveIds.has(cardKey)) continue
+
+      // Auto-approve: send "always" reply without showing a card
+      if (autoApprove) {
+        seenInteractiveIds.add(cardKey)
+        logger.info(
+          `Poller: auto-approving permission ${p.id} for session ${p.sessionID}`,
+        )
+        fetch(`${serverUrl}/permission/${p.id}/reply`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ reply: "always" }),
+          signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+        }).catch((err) => {
+          logger.warn(`Poller: auto-approve failed for ${p.id}: ${err}`)
+        })
+        continue
+      }
 
       const chatId = getChatForSession(p.sessionID)
       if (!chatId) continue

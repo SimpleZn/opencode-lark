@@ -250,6 +250,7 @@ async function main(): Promise<void> {
     getChatForSession: (sessionId) => observer.getChatForSession(sessionId),
     seenInteractiveIds,
     interactiveCardRegistry,
+    autoApprove: config.autoApprove,
   })
   interactivePoller.start()
 

@@ -12,9 +12,17 @@ set -a && source .env && set +a
 
 # Make port configurable via OPENCODE_SERVER_PORT env var (default 4097)
 PORT=${OPENCODE_SERVER_PORT:-4097}
+# Make model configurable via OPENCODE_MODEL env var (default qwen3.6-plus)
+MODEL=${OPENCODE_MODEL:-qwen3.6-plus}
 
-echo "[start] Starting dedicated opencode server on port $PORT..."
-opencode serve --port $PORT &
+# Build flags
+SERVE_FLAGS="--port $PORT --model $MODEL"
+if [ "$AUTO_APPROVE" = "true" ] || [ "$AUTO_APPROVE" = "1" ]; then
+  SERVE_FLAGS="$SERVE_FLAGS --yolo"
+fi
+
+echo "[start] Starting dedicated opencode server on port $PORT with model $MODEL..."
+opencode serve $SERVE_FLAGS &
 OPENCODE_PID=$!
 echo "[start] opencode server PID: $OPENCODE_PID"
 

@@ -41,7 +41,7 @@
     ".": "./dist/index.js"
   },
   "dependencies": {
-    "@larksuiteoapi/node-sdk": "^1.59.0",
+    "@larksuiteoapi/node-sdk": "^1.63.1",
     "@opencode-ai/sdk": "^1.1.19",
     "express": "^4.21.0",
     "zod": "^3.24.0"

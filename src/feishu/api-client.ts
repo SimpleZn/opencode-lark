@@ -8,7 +8,9 @@ import type { FeishuMessageBody, FeishuApiResponse } from "../types.js"
 
 const logger = createLogger("feishu-api")
 
-const FEISHU_BASE_URL = "https://open.feishu.cn/open-apis"
+const FEISHU_BASE_URL = process.env.LARK_DOMAIN === "lark" 
+  ? "https://open.larksuite.com/open-apis" 
+  : "https://open.feishu.cn/open-apis"
 
 export const MAX_DOWNLOAD_BYTES = 50 * 1024 * 1024 // 50 MB
 

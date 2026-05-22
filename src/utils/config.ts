@@ -45,6 +45,7 @@ const AppConfigSchema = z.object({
   cron: CronConfigSchema.optional(),
   heartbeat: HeartbeatConfigSchema.optional(),
   messageDebounceMs: z.number().int().min(0).optional().default(10000),
+  autoApprove: z.boolean().optional().default(false),
 })
 
 export type AppConfig = z.infer<typeof AppConfigSchema>
@@ -96,6 +97,7 @@ export async function loadConfig(configPath?: string): Promise<AppConfig> {
       },
       defaultAgent: "build",
       dataDir: "./data",
+      autoApprove: process.env["AUTO_APPROVE"] === "true" || process.env["AUTO_APPROVE"] === "1",
     })
   }
 

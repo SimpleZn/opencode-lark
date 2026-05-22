@@ -179,7 +179,7 @@ export class StreamingCardSession {
       error: "❌",
     }
     const lines = this.toolStatuses.map(
-      (t) => t.title ? `${icons[t.state]} ${t.name} · ${t.title}` : `${icons[t.state]} ${t.name}`,
+      (t) => t.title ? `${icons[t.state] ?? "⚡"} ${t.name} · ${t.title}` : `${icons[t.state] ?? "⚡"} ${t.name}`,
     )
     return "\n\n---\n" + lines.join("\n")
   }
