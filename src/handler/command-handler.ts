@@ -311,6 +311,7 @@ export function createCommandHandler(deps: CommandHandlerDeps): CommandHandler {
           return true
 
         case "/abort":
+        case "/stop":
           await handleAbort(feishuKey, chatId, messageId)
           return true
 

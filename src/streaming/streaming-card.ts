@@ -4,7 +4,7 @@
  * and full lifecycle management.
  */
 
-import type { CardKitClient, CardKitSchema } from "../feishu/cardkit-client.js"
+import type { CardKitClient, CardKitSchema, CardTableData } from "../feishu/cardkit-client.js"
 import type { FeishuApiClient } from "../feishu/api-client.js"
 
 export interface StreamingCardOptions {
@@ -44,6 +44,9 @@ export class StreamingCardSession {
   private toolStatuses: ToolStatus[] = []
   private subtaskButtons: SubtaskButton[] = []
 
+  // Track whether the table element has been created (lazily added via POST)
+  private hasTableElement = false
+
   constructor(options: StreamingCardOptions) {
     this.cardkitClient = options.cardkitClient
     this.feishuClient = options.feishuClient
@@ -59,6 +62,8 @@ export class StreamingCardSession {
       return
     }
 
+    // Don't include empty table element — CardKit API rejects `columns: []`.
+    // Table element is lazily created on first setTable() call.
     const cardJson: CardKitSchema = {
       schema: "2.0",
       config: {
@@ -120,6 +125,55 @@ export class StreamingCardSession {
     // Rebuild full content with buttons section
     const fullContent = this.buildFullContent()
     await this.enqueueUpdate(fullContent)
+  }
+
+  async setTable(data: CardTableData): Promise<void> {
+    if (!this.state || this.closed) {
+      return
+    }
+
+    // Lazily create the table element on first call
+    if (!this.hasTableElement) {
+      await this.cardkitClient.createElement(this.state.cardId, {
+        tag: "table",
+        element_id: "table",
+        content: JSON.stringify({
+          rows: data.rows,
+          columns: data.columns.map((col) => ({
+            name: col.name,
+            width: col.width ?? 200,
+          })),
+        }),
+      })
+      this.hasTableElement = true
+      return
+    }
+
+    // Subsequent updates via PUT
+    const tableContent: Record<string, unknown> = {
+      rows: data.rows,
+      columns: data.columns.map((col) => ({
+        name: col.name,
+        width: col.width ?? 200,
+      })),
+    }
+
+    this.state.sequence += 1
+    await this.cardkitClient.updateJsonElement(
+      this.state.cardId,
+      "table",
+      tableContent,
+      this.state.sequence,
+    )
+  }
+
+  async removeTable(): Promise<void> {
+    if (!this.state || this.closed || !this.hasTableElement) {
+      return
+    }
+    // Table element was lazily created — it stays visible with last data.
+    // We don't delete it because CardKit requires non-empty columns.
+    // The table remains as a record of the last shown data.
   }
 
   async close(finalText?: string): Promise<void> {

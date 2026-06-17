@@ -19,6 +19,22 @@ export interface CardElement {
   element_id: string
 }
 
+export interface CardTableData {
+  columns: Array<{
+    name: string
+    width?: number
+  }>
+  rows: Array<
+    Array<{
+      tag: string
+      text: {
+        tag: string
+        content: string
+      }
+    }>
+  >
+}
+
 export class CardKitError extends Error {
   code: number
 
@@ -78,6 +94,34 @@ export class CardKitClient {
       "PUT",
       `/cardkit/v1/cards/${cardId}/elements/${elementId}/content`,
       { content, sequence, uuid: `s_${cardId}_${sequence}` },
+    )
+  }
+
+  async updateJsonElement(
+    cardId: string,
+    elementId: string,
+    content: Record<string, unknown>,
+    sequence: number,
+  ): Promise<void> {
+    await this.apiRequest(
+      "PUT",
+      `/cardkit/v1/cards/${cardId}/elements/${elementId}/content`,
+      { content: JSON.stringify(content), sequence, uuid: `s_${cardId}_${sequence}` },
+    )
+  }
+
+  /**
+   * Create a new element on an existing card via POST.
+   * Used for lazily adding elements that weren't in the initial card JSON.
+   */
+  async createElement(
+    cardId: string,
+    element: Record<string, unknown>,
+  ): Promise<void> {
+    await this.apiRequest(
+      "POST",
+      `/cardkit/v1/cards/${cardId}/elements`,
+      { element: JSON.stringify(element) },
     )
   }
 

@@ -14,7 +14,7 @@ Core inbound pipeline. Receives normalized messages from `FeishuPlugin`, then:
 6. Kicks off `StreamingBridge` to listen for the response
 7. Calls `sendDetectedFiles` via `outbound-media.ts` once the session goes idle
 ### `command-handler.ts`
-Handles slash commands typed in Feishu: `/new`, `/sessions`, `/connect`, `/compact`, `/share`, `/abort`, `/help`.
+Handles slash commands typed in Feishu: `/new`, `/sessions`, `/connect`, `/compact`, `/share`, `/abort`, `/stop`, `/help`.
 
 Key detail: the currently connected session is pinned at the top of the `/sessions` list regardless of API ordering. Sessions are displayed as interactive cards with clickable buttons to connect.
 

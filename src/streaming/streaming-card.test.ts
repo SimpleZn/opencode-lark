@@ -6,11 +6,15 @@ import { createMockFeishuClient } from "../__tests__/setup.js"
 function createMockCardKitClient(): CardKitClient & {
   createCard: ReturnType<typeof vi.fn>
   updateElement: ReturnType<typeof vi.fn>
+  updateJsonElement: ReturnType<typeof vi.fn>
+  createElement: ReturnType<typeof vi.fn>
   closeStreaming: ReturnType<typeof vi.fn>
 } {
   return {
     createCard: vi.fn().mockResolvedValue("card_123"),
     updateElement: vi.fn().mockResolvedValue(undefined),
+    updateJsonElement: vi.fn().mockResolvedValue(undefined),
+    createElement: vi.fn().mockResolvedValue(undefined),
     closeStreaming: vi.fn().mockResolvedValue(undefined),
   } as any
 }
@@ -55,6 +59,8 @@ describe("StreamingCardSession", () => {
       expect(schema.config.streaming_config?.print_step?.default).toBe(10)
       expect(schema.body.elements[0]!.element_id).toBe("content")
       expect(schema.body.elements[0]!.content).toBe("🛠️ Processing...")
+      // No table element in initial card — added lazily on first setTable() call
+      expect(schema.body.elements.length).toBe(1)
 
       expect(feishuClient.sendMessage).toHaveBeenCalledWith("chat_789", {
         msg_type: "interactive",
@@ -260,6 +266,97 @@ describe("StreamingCardSession", () => {
       const lastCall = cardkitClient.updateElement.mock.calls.at(-1)!
       expect(lastCall[2]).toContain("View details")
       expect(lastCall[2]).toContain("subtask_1")
+    })
+  })
+
+  describe("setTable", () => {
+    it("creates table element via createElement on first call", async () => {
+      const { session, cardkitClient } = createStartedSession()
+      await session.start()
+
+      await session.setTable({
+        columns: [{ name: "Name", width: 200 }],
+        rows: [[{ tag: "text", text: { tag: "plain_text", content: "Row 1" } }]],
+      })
+
+      expect(cardkitClient.createElement).toHaveBeenCalledWith(
+        "card_123",
+        expect.objectContaining({
+          tag: "table",
+          element_id: "table",
+        }),
+      )
+      // No updateJsonElement on first call — createElement handles the initial data
+      expect(cardkitClient.updateJsonElement).not.toHaveBeenCalled()
+    })
+
+    it("uses updateJsonElement for subsequent table updates", async () => {
+      const { session, cardkitClient } = createStartedSession()
+      await session.start()
+
+      // First call — creates element
+      await session.setTable({
+        columns: [{ name: "A" }],
+        rows: [[{ tag: "text", text: { tag: "plain_text", content: "v1" } }]],
+      })
+      cardkitClient.createElement.mockClear()
+
+      // Second call — updates element
+      await session.setTable({
+        columns: [{ name: "A" }],
+        rows: [[{ tag: "text", text: { tag: "plain_text", content: "v2" } }]],
+      })
+
+      expect(cardkitClient.createElement).not.toHaveBeenCalled()
+      expect(cardkitClient.updateJsonElement).toHaveBeenCalledWith(
+        "card_123",
+        "table",
+        expect.objectContaining({
+          rows: expect.any(Array),
+        }),
+        expect.any(Number),
+      )
+    })
+
+    it("is a no-op when session is closed", async () => {
+      const { session, cardkitClient } = createStartedSession()
+      await session.start()
+      await session.close()
+      cardkitClient.createElement.mockClear()
+
+      await session.setTable({ columns: [], rows: [] })
+
+      expect(cardkitClient.createElement).not.toHaveBeenCalled()
+    })
+  })
+
+  describe("removeTable", () => {
+    it("is a no-op — table element stays visible (can't set empty columns)", async () => {
+      const { session, cardkitClient } = createStartedSession()
+      await session.start()
+
+      // Set a table first
+      await session.setTable({
+        columns: [{ name: "A" }],
+        rows: [[{ tag: "text", text: { tag: "plain_text", content: "v1" } }]],
+      })
+      cardkitClient.createElement.mockClear()
+
+      await session.removeTable()
+
+      // No API calls — removeTable is a no-op since CardKit requires non-empty columns
+      expect(cardkitClient.createElement).not.toHaveBeenCalled()
+      expect(cardkitClient.updateJsonElement).not.toHaveBeenCalled()
+    })
+
+    it("is a no-op when session is closed", async () => {
+      const { session, cardkitClient } = createStartedSession()
+      await session.start()
+      await session.close()
+
+      await session.removeTable()
+
+      expect(cardkitClient.createElement).not.toHaveBeenCalled()
     })
   })
 

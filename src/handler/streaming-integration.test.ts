@@ -72,6 +72,8 @@ function createMockCardKitClient() {
   return {
     createCard: vi.fn().mockResolvedValue("card_123"),
     updateElement: vi.fn().mockResolvedValue(undefined),
+    updateJsonElement: vi.fn().mockResolvedValue(undefined),
+    createElement: vi.fn().mockResolvedValue(undefined),
     closeStreaming: vi.fn().mockResolvedValue(undefined),
   } as unknown as CardKitClient
 }
@@ -349,6 +351,88 @@ describe("createStreamingBridge", () => {
 
     await handlePromise
     expect((deps.cardkitClient as any).updateElement).toHaveBeenCalled()
+  })
+
+  it("handles ToolStateChange with markdown table output by calling setTable", async () => {
+    const deps = makeDeps({
+      feishuClient: {
+        ...createMockFeishuClient(),
+        sendMessage: vi.fn().mockResolvedValue({
+          code: 0,
+          data: { message_id: "msg_456" },
+        }),
+      },
+    })
+    const bridge = createStreamingBridge(deps)
+
+    const onComplete = vi.fn()
+    const handlePromise = bridge.handleMessage(
+          "chat-1",
+          "ses-1",
+          eventListeners,
+          eventProcessor,
+          mockSendMessage,
+          onComplete,
+          "msg_original",
+          null,
+        )
+
+    await waitFor(() => {
+      expect(eventListeners.size).toBe(1)
+    })
+
+    const listener = [...eventListeners.get("ses-1")!][0]!
+
+    // Inject tool completion with markdown table in output
+    listener({
+      type: "message.part.updated",
+      properties: {
+        part: {
+          sessionID: "ses-1",
+          messageID: "m-1",
+          type: "tool",
+          tool: "read_file",
+          state: {
+            status: "completed",
+            title: "Read config",
+            output: `| Name | Type |
+|------|------|
+| foo  | User |
+| bar  | Admin |
+`,
+          },
+        },
+      },
+    })
+
+    await new Promise((r) => setTimeout(r, 10))
+
+    // createElement should be called with table data (lazy creation)
+    const mockCardKit = deps.cardkitClient as any
+    expect(mockCardKit.createElement).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        tag: "table",
+        element_id: "table",
+      }),
+    )
+    // Verify the element content contains the expected columns
+    const createCall = mockCardKit.createElement.mock.calls[0]
+    const element = createCall[1] as Record<string, unknown>
+    const content = JSON.parse(element.content as string)
+    expect(content.columns).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: "Name" }),
+        expect.objectContaining({ name: "Type" }),
+      ]),
+    )
+
+    listener({
+      type: "session.status",
+      properties: { sessionID: "ses-1", status: { type: "idle" } },
+    })
+
+    await handlePromise
   })
 
   it("handles SubtaskDiscovered by sending separate card via sendMessage", async () => {
@@ -1021,5 +1105,83 @@ describe("createStreamingBridge", () => {
     expect(card.elements?.[0]?.content).toBe("Hello World")
     // deleteReaction called
     expect(mockFeishu.deleteReaction).toHaveBeenCalledWith("msg_original", "reaction_123")
+  })
+
+  it("renders markdown tables in text response as Feishu table elements", async () => {
+    const deps = makeDeps({
+      feishuClient: {
+        ...createMockFeishuClient(),
+        sendMessage: vi.fn().mockResolvedValue({
+          code: 0,
+          data: { message_id: "msg_456" },
+        }),
+      },
+    })
+    const bridge = createStreamingBridge(deps)
+
+    const onComplete = vi.fn()
+    const handlePromise = bridge.handleMessage(
+      "chat-1",
+      "ses-1",
+      eventListeners,
+      eventProcessor,
+      mockSendMessage,
+      onComplete,
+      "msg_original",
+      null,
+    )
+
+    await waitFor(() => expect(eventListeners.size).toBe(1))
+
+    const listener = [...eventListeners.get("ses-1")!][0]!
+
+    // Inject text with markdown table (delta must be non-empty for textBuffer to accumulate)
+    const tableText = `## Coverage Info
+| Code | Name |
+|------|------|
+| 1002 | Death |
+| 1001 | Disability |`
+
+    listener({
+      type: "message.part.updated",
+      properties: {
+        part: {
+          sessionID: "ses-1",
+          messageID: "m-1",
+          type: "text",
+          text: tableText,
+        },
+        delta: tableText,
+      },
+    })
+
+    listener({
+      type: "session.status",
+      properties: { sessionID: "ses-1", status: { type: "idle" } },
+    })
+
+    await handlePromise
+
+    const replyArgs = (deps.feishuClient.replyMessage as any).mock.calls[0]
+    const card = JSON.parse(replyArgs?.[1]?.content as string)
+
+    // Should have multiple elements: text header + table
+    expect(card.elements).toHaveLength(2)
+    expect(card.elements[0]).toEqual({
+      tag: "markdown",
+      content: "**Coverage Info**",
+    })
+    expect(card.elements[1]).toEqual({
+      tag: "table",
+      page_size: 20,
+      columns: [
+        { name: "column_0", display_name: "Code", data_type: "lark_md" },
+        { name: "column_1", display_name: "Name", data_type: "lark_md" },
+      ],
+      rows: [
+        { column_0: "1002", column_1: "Death" },
+        { column_0: "1001", column_1: "Disability" },
+      ],
+    })
   })
 })

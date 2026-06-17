@@ -7,6 +7,7 @@ import type { EventProcessor } from "../streaming/event-processor.js"
 import type { QuestionAsked, PermissionRequested } from "../streaming/event-processor.js"
 import type { EventListenerMap } from "../utils/event-listeners.js"
 import { addListener, removeListener } from "../utils/event-listeners.js"
+import { renderMarkdownCardElements } from "../feishu/markdown-card-renderer.js"
 import { StreamingCardSession } from "../streaming/streaming-card.js"
 import type { OutboundMediaHandler } from "./outbound-media.js"
 import type { ExpiringSet } from "../utils/expiring-set.js"
@@ -133,6 +134,15 @@ export function createStreamingBridge(
                     .catch((err) => {
                       logger.warn(`setToolStatus failed: ${err}`)
                     })
+
+                  // Handle markdown tables from tool output
+                  if (action.state === "completed" && action.tableData?.length) {
+                    card!
+                      .setTable(action.tableData[0]!)
+                      .catch((err) => {
+                        logger.warn(`setTable failed: ${err}`)
+                      })
+                  }
                 }).catch((err) => {
                   logger.warn(`card start for tool failed: ${err}`)
                 })
@@ -358,15 +368,7 @@ function parseSyncResponse(rawText: string, logger: Logger): string {
 export function buildFinalResponseCard(text: string): Record<string, unknown> {
   return {
     config: { wide_screen_mode: true },
-    elements: [
-      {
-        tag: "div",
-        text: {
-          tag: "lark_md",
-          content: text,
-        },
-      },
-    ],
+    elements: renderMarkdownCardElements(text),
   }
 }
 

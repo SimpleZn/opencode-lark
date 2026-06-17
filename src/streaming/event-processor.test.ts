@@ -130,6 +130,40 @@ describe("EventProcessor", () => {
 
       expect(result).toBeNull()
     })
+
+    it("ignores identified text updated deltas when the same part emits delta events", () => {
+      const proc = makeProcessor()
+      const updatedResult = proc.processEvent({
+        type: "message.part.updated",
+        properties: {
+          part: {
+            id: "prt-1",
+            sessionID: "ses-1",
+            messageID: "msg-1",
+            type: "text",
+            text: "answer",
+          },
+          delta: "answer",
+        },
+      })
+      const deltaResult = proc.processEvent({
+        type: "message.part.delta",
+        properties: {
+          sessionID: "ses-1",
+          messageID: "msg-1",
+          partID: "prt-1",
+          field: "text",
+          delta: "answer",
+        },
+      })
+
+      expect(deltaResult).toEqual<TextDelta>({
+        type: "TextDelta",
+        sessionId: "ses-1",
+        text: "answer",
+      })
+      expect(updatedResult).toBeNull()
+    })
   })
 
   describe("ToolStateChange", () => {

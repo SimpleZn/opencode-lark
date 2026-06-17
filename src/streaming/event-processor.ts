@@ -1,11 +1,5 @@
-// ═══════════════════════════════════════════
-// SSE Event Processor
-// Parses raw opencode SSE events into typed actions.
-// ═══════════════════════════════════════════
-
-// ---------------------------------------------------------------------------
-// Output action types
-// ---------------------------------------------------------------------------
+import type { CardTableData } from "../feishu/cardkit-client.js"
+import { findMarkdownTables } from "../utils/markdown-table.js"
 
 export interface TextDelta {
   readonly type: "TextDelta"
@@ -23,6 +17,7 @@ export interface ToolStateChange {
   readonly output?: string
   readonly error?: string
   readonly title?: string
+  readonly tableData?: ReadonlyArray<CardTableData>
 }
 
 export interface SubtaskDiscovered {
@@ -261,7 +256,7 @@ export class EventProcessor {
 
     switch (partType) {
       case "text":
-        return this.processTextPart(sessionId, delta)
+        return this.processTextPart(sessionId, partId, delta)
       case "reasoning":
         return this.processReasoningPart(sessionId, delta)
       case "tool":
@@ -300,9 +295,15 @@ export class EventProcessor {
 
   private processTextPart(
     sessionId: string,
+    partId: unknown,
     delta: string | undefined,
   ): TextDelta | null {
     if (typeof delta !== "string" || delta.length === 0) return null
+    // Identified text parts stream their content through message.part.delta.
+    // Treat updated events as snapshots to avoid appending the same text twice.
+    if (typeof partId === "string") {
+      return null
+    }
     return { type: "TextDelta", sessionId, text: delta }
   }
 
@@ -327,6 +328,8 @@ export class EventProcessor {
     const title = (state as Record<string, unknown>).title
     const input = (state as Record<string, unknown>).input
     const output = (state as Record<string, unknown>).output
+    const tableData = typeof output === "string" ? findMarkdownTables(output) : undefined
+
     const result: ToolStateChange = {
       type: "ToolStateChange",
       sessionId,
@@ -336,6 +339,7 @@ export class EventProcessor {
       ...(typeof output === "string" ? { output } : {}),
       ...(typeof error === "string" ? { error } : {}),
       ...(typeof title === "string" ? { title } : {}),
+      ...(tableData && tableData.length > 0 ? { tableData } : {}),
     }
     return result
   }
