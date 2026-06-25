@@ -59,6 +59,42 @@ export class SessionGoneError extends Error {
   }
 }
 
+async function formatPromptHttpError(resp: Response): Promise<string> {
+  let body = ""
+  try {
+    body = await resp.text()
+  } catch {
+    // Ignore body read errors; status is still useful.
+  }
+
+  const snippet = body.trim().slice(0, 500)
+  return snippet
+    ? `Prompt HTTP error: ${resp.status} ${resp.statusText} — ${snippet}`
+    : `Prompt HTTP error: ${resp.status} ${resp.statusText}`
+}
+
+function parsePromptModel(rawModel: string | undefined, logger: Logger): { providerID: string; modelID: string } | undefined {
+  const model = rawModel?.trim()
+  if (!model) return undefined
+
+  const slash = model.indexOf("/")
+  if (slash <= 0 || slash === model.length - 1) {
+    logger.warn(
+      `Ignoring OPENCODE_MODEL=${model}; expected provider/model, for example peak3/openai/deepseek-v4-flash`,
+    )
+    return undefined
+  }
+
+  return {
+    providerID: model.slice(0, slash),
+    modelID: model.slice(slash + 1),
+  }
+}
+
+function buildPromptBody(parts: Array<{ type: string; text: string }>, model: { providerID: string; modelID: string } | undefined): string {
+  return JSON.stringify(model ? { model, parts } : { parts })
+}
+
 // ── Helper: resolve the download directory ──
 
 let cachedDownloadDir: string | null = null
@@ -404,6 +440,7 @@ export function createMessageHandler(
   } = deps
 
   const signedSessions = new Set<string>()
+  const promptModel = parsePromptModel(process.env.OPENCODE_MODEL, logger)
 
   // ── Debouncer (opt-in via debounceMs > 0) ──
   const debouncer = deps.debounceMs && deps.debounceMs > 0
@@ -639,7 +676,7 @@ export function createMessageHandler(
 
     // ── 8. Build the POST-to-opencode function ──
     let currentSessionId = sessionId
-    const postBody = JSON.stringify({ parts })
+    const postBody = buildPromptBody(parts, promptModel)
 
     async function postToOpencode(): Promise<string> {
       const url = `${serverUrl}/session/${currentSessionId}/message`
@@ -652,7 +689,7 @@ export function createMessageHandler(
         throw new SessionGoneError(currentSessionId, 404)
       }
       if (!resp.ok) {
-        throw new Error(`Prompt HTTP error: ${resp.status}`)
+        throw new Error(await formatPromptHttpError(resp))
       }
       const rawText = await resp.text()
       logger.info(
@@ -910,7 +947,7 @@ export function createMessageHandler(
 
     // Build POST function
     let currentSessionId = sessionId
-    const postBody = JSON.stringify({ parts })
+    const postBody = buildPromptBody(parts, promptModel)
 
     async function postToOpencode(): Promise<string> {
       const url = `${serverUrl}/session/${currentSessionId}/message`
@@ -923,7 +960,7 @@ export function createMessageHandler(
         throw new SessionGoneError(currentSessionId, 404)
       }
       if (!resp.ok) {
-        throw new Error(`Prompt HTTP error: ${resp.status}`)
+        throw new Error(await formatPromptHttpError(resp))
       }
       const rawText = await resp.text()
       logger.info(
